@@ -78,12 +78,10 @@ body{
 }
 
 .warningA{
-
     background:#ff0000;
 }
 
 .warningB{
-
     background:#39ff14;
 }
 
@@ -252,7 +250,6 @@ function startCountdown(seconds){
             timeLeft > 0
         ){
 
-            // ピッ
             beep(1400,80);
 
             flashToggle =
@@ -322,7 +319,7 @@ function startCountdown(seconds){
 
                 beep(1000,80);
 
-                autoMain();
+                nextRound(true);
 
                 return;
             }
@@ -333,7 +330,7 @@ function startCountdown(seconds){
 
 // ===== 新ラウンド =====
 
-function nextRound(){
+function nextRound(autoStart=false){
 
     clearInterval(timer);
 
@@ -367,7 +364,7 @@ function nextRound(){
         debuff += 5;
 
         info.innerText =
-        "寸止めタイム♡-5秒";
+        "1×1 危険";
 
         vibe([100,50,100,50,100]);
     }
@@ -379,7 +376,7 @@ function nextRound(){
         debuff += 1;
 
         info.innerText =
-        "寸止めタイム♡-１秒";
+        "危険域";
 
         vibe([80,40,80]);
     }
@@ -392,58 +389,43 @@ function nextRound(){
         "寸止めタイム♡";
     }
 
-    state = "dice_done";
-}
+    // ===== 自動開始 =====
 
-// ===== 自動開始 =====
+    if(autoStart){
 
-function autoMain(){
+        oniMode =
+        Math.floor(Math.random()*40)===0;
 
-    const dice =
-    rollDice();
+        if(oniMode){
 
-    currentDice =
-    dice.result;
+            info.innerText =
+            "鬼責め";
 
-    oneOneMode =
-    dice.oneOne;
+            info.classList.add("oni");
 
-    big.innerText =
-    currentDice;
+            vibe([200,50,200]);
 
-    oniMode =
-    Math.floor(Math.random()*40)===0;
+        }else{
 
-    beep(1000,80);
+            info.innerText =
+            "寸止めタイム♡";
 
-    if(oniMode){
+            info.classList.remove("oni");
+        }
 
-        info.innerText =
-        "鬼責め";
+        let countdown =
+        oneOneMode
+        ? 5
+        : currentDice * 2;
 
-        info.classList.add("oni");
+        state = "main";
 
-        vibe([200,50,200]);
+        startCountdown(countdown);
+
+    }else{
+
+        state = "dice_done";
     }
-
-    else{
-
-        info.innerText =
-        "寸止めタイム♡";
-
-        info.classList.remove("oni");
-    }
-
-    // ===== 1×1は5秒 =====
-
-    let countdown =
-    oneOneMode
-    ? 5
-    : currentDice * 2;
-
-    state = "main";
-
-    startCountdown(countdown);
 }
 
 // ===== 寸止めまで =====
@@ -507,6 +489,7 @@ function action(){
             info.classList.add("oni");
 
             vibe([200,50,200]);
+
         }
 
         else{
@@ -589,6 +572,7 @@ function action(){
         beep(1000,80);
 
         nextRound();
+
     }
 
     // ===== GAME OVER =====
