@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+
+<meta name="viewport"
+content="width=device-width,
+initial-scale=1.0,
+maximum-scale=1.0,
+user-scalable=no">
+
+<title>寸止めゲーム</title>
+
+<style>
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body{
+
+    width:100vw;
+    height:100vh;
+
+    overflow:hidden;
+
+    background:#050505;
+    color:white;
+
+    display:flex;
+    flex-direction:column;
+
+    justify-content:center;
+    align-items:center;
+
+    font-family:sans-serif;
+
+    transition:0.08s;
+
+    user-select:none;
+}
+
+#big{
+
+    font-size:30vw;
+    font-weight:bold;
+
+    margin-bottom:10px;
+}
+
+#timer{
+
+    font-size:17vw;
+}
+
+#info{
+
+    margin-top:30px;
+
+    font-size:8vw;
+
+    text-align:center;
+}
+
+#loop{
+
+    position:absolute;
+
+    bottom:18px;
+    right:18px;
+
+    font-size:4vw;
+
+    opacity:0.5;
+}
+
+.warningA{
+
+    background:#ff0000;
+}
+
+.warningB{
+
+    background:#39ff14;
+}
+
+.oni{
+
+    color:#ff0000;
+
+    animation:oniFlash 0.2s infinite;
+}
+
+@keyframes oniFlash{
+
+    0%{
+        transform:scale(1);
+    }
+
+    50%{
+        transform:scale(1.08);
+    }
+
+    100%{
+        transform:scale(1);
+    }
+}
+
+</style>
+</head>
+<body>
+
+<div id="big">-</div>
+
+<div id="timer">00.00</div>
+
+<div id="info">タップで開始</div>
+
+<div id="loop">LOOP 0</div>
+
+<script>
+
+let state = "idle";
+
+let timer = null;
+
+let timeLeft = 0;
+
+let loopCount = 0;
+
+let debuff = 0;
+
+let currentDice = 0;
+
+let oniMode = false;
+
+let oneOneMode = false;
+
+let flashToggle = false;
+
+const big =
+document.getElementById("big");
+
+const timerText =
+document.getElementById("timer");
+
+const info =
+document.getElementById("info");
+
+const loopText =
+document.getElementById("loop");
+
+// ===== 音 =====
+
+const audioCtx =
+new(window.AudioContext ||
+window.webkitAudioContext)();
+
+function beep(freq,duration){
+
+    const osc =
+    audioCtx.createOscillator();
+
+    const gain =
+    audioCtx.createGain();
+
+    osc.connect(gain);
+
+    gain.connect(audioCtx.destination);
+
+    osc.frequency.value = freq;
+
+    osc.type = "square";
+
+    gain.gain.setValueAtTime(
+    0.05,
+    audioCtx.currentTime
+    );
+
+    osc.start();
+
+    osc.stop(
+    audioCtx.currentTime +
+    duration / 1000
+    );
+}
+
+// ===== バイブ =====
+
+function vibe(pattern){
+
+    if(navigator.vibrate){
+
+        navigator.vibrate(pattern);
+    }
+}
+
+// ===== サイコロ =====
+
+function rollDice(){
+
+    const d1 =
+    Math.floor(Math.random()*6)+1;
+
+    const d2 =
+    Math.floor(Math.random()*6)+1;
+
+    return {
+
+        result:d1*d2,
+
+        oneOne:(d1===1 && d2===1)
+    };
+}
+
+// ===== 時間表示 =====
+
+function formatTime(sec){
+
+    let s =
+    String(sec).padStart(2,"0");
+
+    return `00.${s}`;
+}
+
+// ===== カウント =====
+
+function startCountdown(seconds){
+
+    clearInterval(timer);
+
+    timeLeft = seconds;
+
+    timerText.innerText =
+    formatTime(timeLeft);
+
+    timer = setInterval(()=>{
+
+        timeLeft--;
+
+        timerText.innerText =
+        formatTime(timeLeft);
+
+        // ===== 寸止めタイム4秒警告 =====
+
+        if(
+            state === "main" &&
+            timeLeft <= 4 &&
+            timeLeft > 0
+        ){
+
+            // ピッ
+            beep(1400,80);
+
+            flashToggle =
+            !flashToggle;
+
+            if(flashToggle){
+
+                document.body.className =
+                "warningA";
+
+            }else{
+
+                document.body.className =
+                "warningB";
+            }
+
+            vibe(120);
+
+        }else{
+
+            document.body.className =
+            "";
+        }
+
+        // ===== 0秒 =====
+
+        if(timeLeft <= 0){
+
+            clearInterval(timer);
+
+            document.body.className =
+            "";
+
+            // ===== GAME OVER =====
+
+            if(state === "main"){
+
+                beep(250,700);
+
+                big.innerText =
+                "GAME OVER";
+
+                info.innerText =
+                "タップで再開";
+
+                vibe([300,100,300]);
+
+                state = "gameover";
+
+                return;
+            }
+
+            // ===== 休憩終了 =====
+
+            if(state === "break"){
+
+                beep(1000,80);
+
+                startEdge();
+
+                return;
+            }
+
+            // ===== 寸止めまで終了 =====
+
+            if(state === "edge"){
+
+                beep(1000,80);
+
+                autoMain();
+
+                return;
+            }
+        }
+
+    },1000);
+}
+
+// ===== 新ラウンド =====
+
+function nextRound(){
+
+    clearInterval(timer);
+
+    loopCount++;
+
+    loopText.innerText =
+    `LOOP ${loopCount}`;
+
+    const dice =
+    rollDice();
+
+    currentDice =
+    dice.result;
+
+    oneOneMode =
+    dice.oneOne;
+
+    big.innerText =
+    currentDice;
+
+    info.classList.remove("oni");
+
+    oniMode = false;
+
+    beep(1000,80);
+
+    // ===== 1×1 =====
+
+    if(dice.oneOne){
+
+        debuff += 5;
+
+        info.innerText =
+        "寸止めタイム♡-5秒";
+
+        vibe([100,50,100,50,100]);
+    }
+
+    // ===== 4以下 =====
+
+    else if(currentDice <= 4){
+
+        debuff += 1;
+
+        info.innerText =
+        "寸止めタイム♡-１秒";
+
+        vibe([80,40,80]);
+    }
+
+    // ===== 通常 =====
+
+    else{
+
+        info.innerText =
+        "寸止めタイム♡";
+    }
+
+    state = "dice_done";
+}
+
+// ===== 自動開始 =====
+
+function autoMain(){
+
+    const dice =
+    rollDice();
+
+    currentDice =
+    dice.result;
+
+    oneOneMode =
+    dice.oneOne;
+
+    big.innerText =
+    currentDice;
+
+    oniMode =
+    Math.floor(Math.random()*40)===0;
+
+    beep(1000,80);
+
+    if(oniMode){
+
+        info.innerText =
+        "鬼責め";
+
+        info.classList.add("oni");
+
+        vibe([200,50,200]);
+    }
+
+    else{
+
+        info.innerText =
+        "寸止めタイム♡";
+
+        info.classList.remove("oni");
+    }
+
+    // ===== 1×1は5秒 =====
+
+    let countdown =
+    oneOneMode
+    ? 5
+    : currentDice * 2;
+
+    state = "main";
+
+    startCountdown(countdown);
+}
+
+// ===== 寸止めまで =====
+
+function startEdge(){
+
+    let min =
+    Math.max(3,10-debuff);
+
+    let max =
+    Math.max(min,20-debuff);
+
+    let edgeTime =
+    Math.floor(
+    Math.random()*
+    (max-min+1)
+    )+min;
+
+    big.innerText =
+    "⚠";
+
+    info.innerText =
+    "寸止めまで";
+
+    info.classList.remove("oni");
+
+    beep(1000,80);
+
+    state = "edge";
+
+    vibe([150,50,150]);
+
+    startCountdown(edgeTime);
+}
+
+// ===== タップ =====
+
+function action(){
+
+    // ===== 初回 =====
+
+    if(state === "idle"){
+
+        nextRound();
+    }
+
+    // ===== サイコロ→開始 =====
+
+    else if(state === "dice_done"){
+
+        oniMode =
+        Math.floor(Math.random()*40)===0;
+
+        beep(1000,80);
+
+        if(oniMode){
+
+            info.innerText =
+            "鬼責め";
+
+            info.classList.add("oni");
+
+            vibe([200,50,200]);
+        }
+
+        else{
+
+            info.innerText =
+            "寸止めタイム♡";
+
+            info.classList.remove("oni");
+        }
+
+        let countdown =
+        oneOneMode
+        ? 5
+        : currentDice * 2;
+
+        state = "main";
+
+        startCountdown(countdown);
+    }
+
+    // ===== 成功 =====
+
+    else if(state === "main"){
+
+        clearInterval(timer);
+
+        // ===== 鬼責め =====
+
+        if(oniMode){
+
+            beep(1000,80);
+
+            nextRound();
+
+            return;
+        }
+
+        let min =
+        Math.max(3,10-debuff);
+
+        let max =
+        Math.max(min,20-debuff);
+
+        let breakTime =
+        Math.floor(
+        Math.random()*
+        (max-min+1)
+        )+min;
+
+        big.innerText =
+        "✓";
+
+        info.innerText =
+        "休憩タイム";
+
+        beep(1000,80);
+
+        state = "break";
+
+        vibe([50,50,50]);
+
+        startCountdown(breakTime);
+    }
+
+    // ===== 休憩スキップ =====
+
+    else if(state === "break"){
+
+        clearInterval(timer);
+
+        beep(1000,80);
+
+        startEdge();
+    }
+
+    // ===== 寸止めまで中 =====
+
+    else if(state === "edge"){
+
+        beep(1000,80);
+
+        nextRound();
+    }
+
+    // ===== GAME OVER =====
+
+    else if(state === "gameover"){
+
+        location.reload();
+    }
+}
+
+// ===== スマホ =====
+
+document.body.addEventListener(
+"touchstart",
+(e)=>{
+
+    e.preventDefault();
+
+    if(audioCtx.state === "suspended"){
+
+        audioCtx.resume();
+    }
+
+    action();
+
+},
+{passive:false}
+);
+
+// ===== PC =====
+
+document.body.addEventListener(
+"click",
+()=>{
+
+    if(audioCtx.state === "suspended"){
+
+        audioCtx.resume();
+    }
+
+    action();
+}
+);
+
+</script>
+</body>
+</html>
